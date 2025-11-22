@@ -6,3 +6,4 @@ google-api-python-client
 gunicorn
 qrcode
 pillow
+Flask-Cors
