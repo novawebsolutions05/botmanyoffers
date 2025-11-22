@@ -1,0 +1,230 @@
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+import qrcode
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.image import MIMEImage
+import string
+import random
+import os
+import uuid
+
+
+app = Flask(__name__)
+CORS(app)
+
+# --- Configuración de Google Sheets ---
+scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+creds = ServiceAccountCredentials.from_json_keyfile_name("credenciales.json", scope)
+client = gspread.authorize(creds)
+SPREADSHEET_ID = "1huOU__jhatsGiP7RZ4zxDeevbYmI8fgh83B4fIJJNew"
+sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+# Índices de columnas (basados en el orden de append_row)
+CODE_COL = 4       # columna del código único
+CANJEADO_COL = 8   # columna "Canjeado"
+
+
+# --- Configuración del correo ---
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+EMAIL_USER = "novawebsolutions05@gmail.com"
+EMAIL_PASS = "aupc pzqx wybo tndn"
+
+# --- Generar código único ---
+def generar_codigo_unico(longitud=8):
+    caracteres = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(caracteres) for _ in range(longitud))
+
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    import re
+    from datetime import datetime
+
+    def clean_wix_value(value):
+        """Limpia los valores que llegan desde Wix con funciones como JOIN(), TEXT(), etc."""
+        if not isinstance(value, str):
+            return value
+
+        # Si es algo como JOIN(Nombre del ítem, ", ")
+        if value.startswith("JOIN("):
+            inner = re.findall(r"JOIN\((.*)\)", value)
+            if inner:
+                inner = inner[0]
+                # eliminar comillas y paréntesis internos
+                inner = inner.replace("'", "").replace('"', "").replace(",", ", ")
+                return inner.strip()
+
+        # Si es algo como TEXT(Valor total) o TEXT(Fecha...)
+        if value.startswith("TEXT("):
+            inner = re.findall(r"TEXT\((.*)\)", value)
+            if inner:
+                return inner[0].replace("'", "").replace('"', "").strip()
+
+        return value.strip()
+
+    # --- Recibir datos del webhook ---
+    data = request.get_json(force=True, silent=True)
+    if not data:
+        data = request.form.to_dict()
+    if "data" in data:
+        data = data["data"]
+
+    print("Datos recibidos:", data)
+
+    # --- Limpiar valores que vienen con JOIN() o TEXT() ---
+    print("Datos recibidos desde Wix:", data)
+
+    nombre = clean_wix_value(data.get("nombre", ""))
+    correo = clean_wix_value(data.get("correo", ""))
+    productos = clean_wix_value(data.get("productos", ""))
+    total = clean_wix_value(data.get("total", ""))
+    fecha = clean_wix_value(data.get("fecha", ""))
+
+    # --- Normalizar total (intentar convertirlo a número) ---
+    try:
+        total_num = float(re.sub(r"[^\d\.]", "", total))
+    except:
+        total_num = 0.0
+
+    total_str = f"{total_num:,.2f}"
+
+    # --- Normalizar fecha ---
+    try:
+        if "T" in fecha:
+            fecha_obj = datetime.fromisoformat(fecha.replace("Z", ""))
+            fecha = fecha_obj.strftime("%Y-%m-%d %H:%M:%S")
+    except:
+        pass
+
+    print(f"\n🧾 Datos finales limpiados:\nNombre: {nombre}\nCorreo: {correo}\nProductos: {productos}\nTotal: {total_str}\nFecha: {fecha}\n")
+
+
+    codigo_unico = str(uuid.uuid4())[:8]  # genera un código único corto
+
+    # 2️⃣ Crear URL personalizada
+    url_qr = f"https://www.manyoffers.net/validar?codigo={codigo_unico}"
+
+    # 3️⃣ Generar el código QR
+    qr_img = qrcode.make(url_qr)
+    qr_path = f"qr_{codigo_unico}.png"
+    qr_img.save(qr_path)
+
+    # 4️⃣ Guardar datos en Google Sheets
+    sheet.append_row([nombre, correo, productos, codigo_unico, total_str, "-", fecha, "NO"])
+
+    # 5️⃣ Enviar email al cliente
+    send_email_with_qr(to_email=correo, nombre=nombre, producto=productos, qr_path=qr_path, codigo_unico=codigo_unico, monto=total_str, fecha=fecha, url_qr=url_qr)
+
+
+    # 6️⃣ Limpiar archivo QR local (opcional)
+    os.remove(qr_path)
+
+    return jsonify({"status": "success", "message": "Datos guardados, QR enviado y registrado"}), 200
+
+
+
+def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
+    subject = f"Tu cupón de Many Offers: {producto}"
+    body = f"""
+    Hola {nombre},
+
+    ¡Gracias por tu compra en Many Offers!
+
+    Aquí tienes tu código QR para tu cupón de **{producto}**.
+    Cada código es único y válido solo una vez.
+
+    Detalles de tu compra:
+    - Producto: {producto}
+    - Monto: ${monto}
+    - Fecha: {fecha}
+    - Código: {codigo_unico}
+
+    Presenta este código QR en el establecimiento para validar tu descuento.
+
+    ¡Disfruta tu oferta!
+    """
+
+    msg = MIMEMultipart()
+    msg["From"] = EMAIL_USER
+    msg["To"] = to_email
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    # Adjuntar imágen QR
+    with open(qr_path, "rb") as f:
+        img = MIMEImage(f.read())
+        img.add_header("Content-ID", "<qr>")
+        msg.attach(img)
+
+    # Enviar correo
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(EMAIL_USER, EMAIL_PASS)
+        print("Correo destinatario:", to_email)
+        server.send_message(msg)
+
+    print(f"✅ Email enviado a {to_email} con código {codigo_unico}")
+
+@app.route("/validar", methods=["POST"])
+def validar():
+    """
+    Recibe un JSON con {"codigo": "ABC123"}.
+    Si existe y no está canjeado -> marca "SI" y responde válido.
+    Si ya estaba canjeado -> responde inválido.
+    Si no existe -> 404.
+    """
+    payload = request.get_json(force=True, silent=True) or {}
+    codigo = payload.get("codigo", "").strip()
+
+    if not codigo:
+        return jsonify({"status": "error", "message": "Código no enviado"}), 400
+
+    try:
+        # Traemos toda la columna de códigos
+        codigos = sheet.col_values(CODE_COL)  # incluye encabezado
+
+        if codigo not in codigos:
+            return jsonify({"status": "error", "message": "Código no encontrado"}), 404
+
+        # Fila exacta del código
+        row = codigos.index(codigo) + 1  # +1 por encabezado
+
+        # Estado actual del cupón
+        estado_actual = (sheet.cell(row, CANJEADO_COL).value or "").strip().upper()
+
+        if estado_actual == "SI":
+            return jsonify({"status": "invalid", "message": "Este código ya fue canjeado"}), 403
+
+        # Marcar como canjeado
+        sheet.update_cell(row, CANJEADO_COL, "SI")
+
+        return jsonify({"status": "valid", "message": "Código válido y marcado como canjeado"}), 200
+
+    except Exception as e:
+        print("Error en /validar:", e)
+        return jsonify({"status": "error", "message": "Error interno"}), 500
+
+
+
+from flask import render_template
+
+@app.route("/web")
+def web():
+    return render_template("validador.html")
+
+
+if __name__ == "__main__":
+    
+    print("Rutas registradas en Flask:")
+    print(app.url_map)
+
+    app.run(host="0.0.0.0", port=5001)
+
+
+
+
