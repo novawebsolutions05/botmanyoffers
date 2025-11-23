@@ -38,8 +38,9 @@ CANJEADO_COL = 8   # columna "Canjeado"
 # --- Configuración del correo ---
 SMTP_SERVER = "smtp.gmail.com"
 SMTP_PORT = 587
-EMAIL_USER = "novawebsolutions05@gmail.com"
-EMAIL_PASS = "aupc pzqx wybo tndn"
+EMAIL_USER = os.getenv("EMAIL_USER")
+EMAIL_PASS = os.getenv("EMAIL_PASS")
+
 
 # --- Generar código único ---
 def generar_codigo_unico(longitud=8):
