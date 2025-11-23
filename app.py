@@ -1,18 +1,19 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import qrcode
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
 import string
 import random
 import os
 import uuid
 import json
+import base64
+
+# SendGrid
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail
 
 app = Flask(__name__)
 CORS(app)
@@ -33,19 +34,100 @@ sheet = client.open_by_key(SPREADSHEET_ID).sheet1
 CODE_COL = 4       # columna del código único
 CANJEADO_COL = 8   # columna "Canjeado"
 
-
-
-# --- Configuración del correo ---
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-EMAIL_USER = os.getenv("EMAIL_USER")
-EMAIL_PASS = os.getenv("EMAIL_PASS")
+# --- Configuración de SendGrid ---
+SENDGRID_KEY = os.getenv("SENDGRID_KEY")
+SENDGRID_FROM = os.getenv("SENDGRID_FROM")  # ej: tu gmail verificado en SendGrid
 
 
 # --- Generar código único ---
 def generar_codigo_unico(longitud=8):
     caracteres = string.ascii_uppercase + string.digits
     return ''.join(random.choice(caracteres) for _ in range(longitud))
+
+
+def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
+    subject = f"Tu cupón de Many Offers: {producto}"
+
+    cuerpo_texto = f"""
+Hola {nombre},
+
+¡Gracias por tu compra en Many Offers!
+
+Aquí tienes tu código QR para tu cupón de {producto}.
+Cada código es único y válido solo una vez.
+
+Detalles de tu compra:
+- Producto: {producto}
+- Monto: ${monto}
+- Fecha: {fecha}
+- Código: {codigo_unico}
+
+También puedes usar este enlace:
+{url_qr}
+
+Presenta este código QR en el establecimiento para validar tu descuento.
+
+¡Disfruta tu oferta!
+"""
+
+    try:
+        # Leer la imagen del QR y convertirla a base64 para incrustarla en el HTML
+        with open(qr_path, "rb") as f:
+            qr_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+        html_contenido = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+            <p>Hola {nombre},</p>
+
+            <p>¡Gracias por tu compra en <strong>Many Offers</strong>!</p>
+
+            <p>
+                Aquí tienes tu código QR para tu cupón de <strong>{producto}</strong>.<br>
+                Cada código es único y válido solo una vez.
+            </p>
+
+            <p><strong>Detalles de tu compra:</strong></p>
+            <ul>
+                <li>Producto: {producto}</li>
+                <li>Monto: ${monto}</li>
+                <li>Fecha: {fecha}</li>
+                <li>Código: {codigo_unico}</li>
+            </ul>
+
+            <p>Puedes presentar este código QR en el establecimiento para validar tu descuento:</p>
+
+            <p style="text-align:center;">
+                <img src="data:image/png;base64,{qr_b64}" alt="QR del cupón" />
+            </p>
+
+            <p>O usar este enlace directo:<br>
+                <a href="{url_qr}">{url_qr}</a>
+            </p>
+
+            <p>¡Disfruta tu oferta!<br>
+            El equipo de Many Offers</p>
+        </body>
+        </html>
+        """
+
+        message = Mail(
+            from_email=SENDGRID_FROM,
+            to_emails=to_email,
+            subject=subject,
+            html_content=html_contenido
+        )
+
+        # También incluimos versión de texto plano por compatibilidad
+        message.add_content(cuerpo_texto, subtype="text/plain")
+
+        sg = SendGridAPIClient(SENDGRID_KEY)
+        response = sg.send(message)
+        print(f"✅ Email enviado a {to_email} con código {codigo_unico}. Status SendGrid: {response.status_code}")
+
+    except Exception as e:
+        # No lanzamos el error para que el webhook no devuelva 500
+        print("❌ Error enviando correo con SendGrid:", e)
 
 
 @app.route("/webhook", methods=["POST"])
@@ -83,8 +165,6 @@ def webhook():
         data = data["data"]
 
     print("Datos recibidos:", data)
-
-    # --- Limpiar valores que vienen con JOIN() o TEXT() ---
     print("Datos recibidos desde Wix:", data)
 
     nombre = clean_wix_value(data.get("nombre", ""))
@@ -111,7 +191,7 @@ def webhook():
 
     print(f"\n🧾 Datos finales limpiados:\nNombre: {nombre}\nCorreo: {correo}\nProductos: {productos}\nTotal: {total_str}\nFecha: {fecha}\n")
 
-
+    # 1️⃣ Generar código único
     codigo_unico = str(uuid.uuid4())[:8]  # genera un código único corto
 
     # 2️⃣ Crear URL personalizada
@@ -125,58 +205,26 @@ def webhook():
     # 4️⃣ Guardar datos en Google Sheets
     sheet.append_row([nombre, correo, productos, codigo_unico, total_str, "-", fecha, "NO"])
 
-    # 5️⃣ Enviar email al cliente
-    send_email_with_qr(to_email=correo, nombre=nombre, producto=productos, qr_path=qr_path, codigo_unico=codigo_unico, monto=total_str, fecha=fecha, url_qr=url_qr)
+    # 5️⃣ Enviar email al cliente (con manejo de errores interno)
+    send_email_with_qr(
+        to_email=correo,
+        nombre=nombre,
+        producto=productos,
+        qr_path=qr_path,
+        codigo_unico=codigo_unico,
+        monto=total_str,
+        fecha=fecha,
+        url_qr=url_qr
+    )
 
+    # 6️⃣ Limpiar archivo QR local
+    try:
+        os.remove(qr_path)
+    except Exception as e:
+        print("No se pudo eliminar el archivo QR local:", e)
 
-    # 6️⃣ Limpiar archivo QR local (opcional)
-    os.remove(qr_path)
+    return jsonify({"status": "success", "message": "Datos guardados, QR generado y correo procesado"}), 200
 
-    return jsonify({"status": "success", "message": "Datos guardados, QR enviado y registrado"}), 200
-
-
-
-def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
-    subject = f"Tu cupón de Many Offers: {producto}"
-    body = f"""
-    Hola {nombre},
-
-    ¡Gracias por tu compra en Many Offers!
-
-    Aquí tienes tu código QR para tu cupón de **{producto}**.
-    Cada código es único y válido solo una vez.
-
-    Detalles de tu compra:
-    - Producto: {producto}
-    - Monto: ${monto}
-    - Fecha: {fecha}
-    - Código: {codigo_unico}
-
-    Presenta este código QR en el establecimiento para validar tu descuento.
-
-    ¡Disfruta tu oferta!
-    """
-
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_USER
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
-
-    # Adjuntar imágen QR
-    with open(qr_path, "rb") as f:
-        img = MIMEImage(f.read())
-        img.add_header("Content-ID", "<qr>")
-        msg.attach(img)
-
-    # Enviar correo
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(EMAIL_USER, EMAIL_PASS)
-        print("Correo destinatario:", to_email)
-        server.send_message(msg)
-
-    print(f"✅ Email enviado a {to_email} con código {codigo_unico}")
 
 @app.route("/validar", methods=["POST"])
 def validar():
@@ -218,23 +266,14 @@ def validar():
         return jsonify({"status": "error", "message": "Error interno"}), 500
 
 
-
-from flask import render_template
-
 @app.route("/web")
 def web():
     return render_template("validador.html")
 
 
 if __name__ == "__main__":
-    
     print("Rutas registradas en Flask:")
     print(app.url_map)
-    
-    
+
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
-
