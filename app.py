@@ -12,20 +12,27 @@ import string
 import random
 import os
 import uuid
-
+import json
 
 app = Flask(__name__)
 CORS(app)
 
 # --- Configuración de Google Sheets ---
 scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-creds = ServiceAccountCredentials.from_json_keyfile_name("credenciales.json", scope)
+
+# Cargar credenciales desde la variable de entorno en Render
+json_creds = os.environ.get("GOOGLE_CREDENTIALS")
+creds_dict = json.loads(json_creds)
+
+creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
 client = gspread.authorize(creds)
 SPREADSHEET_ID = "1huOU__jhatsGiP7RZ4zxDeevbYmI8fgh83B4fIJJNew"
 sheet = client.open_by_key(SPREADSHEET_ID).sheet1
+
 # Índices de columnas (basados en el orden de append_row)
 CODE_COL = 4       # columna del código único
 CANJEADO_COL = 8   # columna "Canjeado"
+
 
 
 # --- Configuración del correo ---
