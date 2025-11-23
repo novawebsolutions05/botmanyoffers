@@ -7,3 +7,5 @@ gunicorn
 qrcode
 pillow
 Flask-Cors
+gspread
+oauth2client
