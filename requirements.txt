@@ -9,3 +9,4 @@ pillow
 Flask-Cors
 gspread
 oauth2client
+sendgrid
