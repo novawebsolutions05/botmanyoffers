@@ -49,26 +49,23 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
     subject = f"Tu cupón de Many Offers: {producto}"
 
     cuerpo_texto = f"""
-Hola {nombre},
+    Hola {nombre},
 
-¡Gracias por tu compra en Many Offers!
+    ¡Gracias por tu compra en Many Offers!
 
-Aquí tienes tu código QR para tu cupón de {producto}.
-Cada código es único y válido solo una vez.
+    Aquí tienes tu código QR para tu cupón de **{producto}**.
+    Cada código es único y válido solo una vez.
 
-Detalles de tu compra:
-- Producto: {producto}
-- Monto: ${monto}
-- Fecha: {fecha}
-- Código: {codigo_unico}
+    Detalles de tu compra:
+    - Producto: {producto}
+    - Monto: ${monto}
+    - Fecha: {fecha}
+    - Código: {codigo_unico}
 
-También puedes usar este enlace:
-{url_qr}
+    Presenta este código QR en el establecimiento para validar tu descuento.
 
-Presenta este código QR en el establecimiento para validar tu descuento.
-
-¡Disfruta tu oferta!
-"""
+    ¡Disfruta tu oferta!
+    """
 
     try:
         # Leer la imagen del QR y convertirla a base64 para incrustarla en el HTML
@@ -111,22 +108,22 @@ Presenta este código QR en el establecimiento para validar tu descuento.
         </html>
         """
 
+        # Crear el mensaje de correo con SendGrid
         message = Mail(
             from_email=SENDGRID_FROM,
             to_emails=to_email,
             subject=subject,
-            html_content=html_contenido
+            html_content=html_contenido  # Directamente el HTML
         )
 
-        # También incluimos versión de texto plano por compatibilidad
-        message.add_content(cuerpo_texto, subtype="text/plain")
+        # Añadir contenido de texto plano por compatibilidad
+        message.text_content = cuerpo_texto  # Aquí añadimos el contenido en texto plano
 
         sg = SendGridAPIClient(SENDGRID_KEY)
         response = sg.send(message)
         print(f"✅ Email enviado a {to_email} con código {codigo_unico}. Status SendGrid: {response.status_code}")
 
     except Exception as e:
-        # No lanzamos el error para que el webhook no devuelva 500
         print("❌ Error enviando correo con SendGrid:", e)
 
 
