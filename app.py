@@ -197,7 +197,7 @@ def webhook():
     codigo_unico = str(uuid.uuid4())[:8]  # genera un código único corto
 
     # 2️⃣ Crear URL personalizada
-    url_qr = f"https://www.manyoffers.net/validar?codigo={codigo_unico}"
+    url_qr = f"https://botmanyoffers.onrender.com/validar?codigo={codigo_unico}"
 
     # 3️⃣ Generar el código QR
     qr_img = qrcode.make(url_qr)
