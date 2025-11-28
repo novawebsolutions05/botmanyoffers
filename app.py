@@ -10,6 +10,11 @@ import os
 import uuid
 import json
 import base64
+from email.mime.image import MIMEImage
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+import smtplib
+
 
 # SendGrid
 from sendgrid import SendGridAPIClient
