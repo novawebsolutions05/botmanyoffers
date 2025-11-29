@@ -120,19 +120,10 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
 </html>
 """
 
-        # Crear el mensaje usando SendGrid con nombre de remitente profesional
-        # Usar un nombre de remitente ayuda a evitar spam
-        from_name = "Many Offers"
-        if "@" in str(SENDGRID_FROM):
-            # Si SENDGRID_FROM es un email, crear un formato con nombre
-            message = Mail(
-                from_email=(from_name, SENDGRID_FROM),
-                to_emails=to_email,
-                subject=subject,
-                plain_text_content=cuerpo_texto,
-                html_content=html_content
-            )
-        else:
+        # Intentar primero con attachment inline (más confiable para Gmail)
+        use_attachment = True
+        try:
+            # Crear el mensaje usando SendGrid
             message = Mail(
                 from_email=SENDGRID_FROM,
                 to_emails=to_email,
@@ -140,26 +131,60 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
                 plain_text_content=cuerpo_texto,
                 html_content=html_content
             )
-        
-        # Configurar headers para evitar spam
-        message.reply_to = SENDGRID_FROM
-        
-        # Agregar attachment inline con Content-ID para el QR
-        attachment = Attachment()
-        attachment.file_content = qr_image_data
-        attachment.file_type = "image/png"
-        attachment.file_name = f"qr_{codigo_unico}.png"
-        attachment.disposition = "inline"
-        attachment.content_id = "qr_cupon"
-        message.add_attachment(attachment)
+            
+            # Configurar reply-to para evitar spam
+            if SENDGRID_FROM:
+                message.reply_to = SENDGRID_FROM
+            
+            # Agregar attachment inline con Content-ID para el QR
+            attachment = Attachment()
+            attachment.file_content = qr_image_data
+            attachment.file_type = "image/png"
+            attachment.file_name = f"qr_{codigo_unico}.png"
+            attachment.disposition = "inline"
+            attachment.content_id = "qr_cupon"
+            message.add_attachment(attachment)
+            print(f"✅ Attachment QR agregado correctamente")
+        except Exception as attach_error:
+            print(f"⚠️ Error al agregar attachment inline: {attach_error}")
+            # Si falla, usar URL directa en lugar de attachment
+            use_attachment = False
+            html_content_with_url = html_content.replace('src="cid:qr_cupon"', f'src="{qr_image_url}"')
+            print(f"🔄 Usando URL directa para el QR: {qr_image_url}")
+            
+            # Recrear el mensaje con la URL
+            message = Mail(
+                from_email=SENDGRID_FROM,
+                to_emails=to_email,
+                subject=subject,
+                plain_text_content=cuerpo_texto,
+                html_content=html_content_with_url
+            )
+            
+            # Configurar reply-to
+            if SENDGRID_FROM:
+                message.reply_to = SENDGRID_FROM
         
         # Configurar tracking settings para mejor deliverability
-        tracking_settings = TrackingSettings()
-        tracking_settings.click_tracking = ClickTracking(enable=True)
-        tracking_settings.open_tracking = OpenTracking(enable=True)
-        message.tracking_settings = tracking_settings
+        # Comentar temporalmente para evitar errores 400
+        # try:
+        #     tracking_settings = TrackingSettings()
+        #     tracking_settings.click_tracking = ClickTracking(enable=True)
+        #     tracking_settings.open_tracking = OpenTracking(enable=True)
+        #     message.tracking_settings = tracking_settings
+        # except Exception as tracking_error:
+        #     print(f"⚠️ Advertencia: No se pudo configurar tracking settings: {tracking_error}")
 
+        # Validar que SENDGRID_FROM esté configurado
+        if not SENDGRID_FROM:
+            raise ValueError("SENDGRID_FROM no está configurado")
+        
+        # Validar que SENDGRID_KEY esté configurado
+        if not SENDGRID_KEY:
+            raise ValueError("SENDGRID_KEY no está configurado")
+        
         # Enviar el correo
+        print(f"📧 Intentando enviar correo a {to_email} desde {SENDGRID_FROM}")
         sg = SendGridAPIClient(SENDGRID_KEY)
         response = sg.send(message)
         print(f"✅ Email enviado a {to_email} con código {codigo_unico}. Status SendGrid: {response.status_code}")
