@@ -10,11 +10,6 @@ import os
 import uuid
 import json
 import base64
-from email.mime.image import MIMEImage
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-import smtplib
-
 
 # SendGrid
 from sendgrid import SendGridAPIClient
@@ -54,58 +49,87 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
     subject = f"Tu cupón de Many Offers: {producto}"
 
     cuerpo_texto = f"""
-    Hola {nombre},
+Hola {nombre},
 
-    ¡Gracias por tu compra en Many Offers!
+¡Gracias por tu compra en Many Offers!
 
-    Aquí tienes tu código QR para tu cupón de **{producto}**.
-    Cada código es único y válido solo una vez.
+Aquí tienes tu código QR para tu cupón de {producto}.
+Cada código es único y válido solo una vez.
 
-    Detalles de tu compra:
-    - Producto: {producto}
-    - Monto: ${monto}
-    - Fecha: {fecha}
-    - Código: {codigo_unico}
+Detalles de tu compra:
+- Producto: {producto}
+- Monto: ${monto}
+- Fecha: {fecha}
+- Código: {codigo_unico}
 
-    Presenta este código QR en el establecimiento para validar tu descuento.
+Puedes presentar este código QR en el establecimiento para validar tu descuento.
 
-    ¡Disfruta tu oferta!
-    """
+¡Disfruta tu oferta!
+"""
 
     try:
-        # Crear el mensaje de correo
-        msg = MIMEMultipart()
-        msg["From"] = SENDGRID_FROM
-        msg["To"] = to_email
-        msg["Subject"] = subject
-        msg.attach(MIMEText(cuerpo_texto, "plain"))
-
-        # Adjuntar la imagen del QR
+        # Leer la imagen QR y convertirla a base64
         with open(qr_path, "rb") as f:
-            img = MIMEImage(f.read())
-            img.add_header("Content-ID", "<qr>")
-            msg.attach(img)
-
-        # Agregar la URL al cuerpo del mensaje
+            qr_image_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Crear el contenido HTML con la imagen embebida en base64
         html_content = f"""
-        <html>
-        <body>
-            <p>{cuerpo_texto}</p>
-            <img src="cid:qr" alt="QR del cupón" />
-            <p>O usar este enlace directo:</p>
-            <a href="{url_qr}">{url_qr}</a>
-        </body>
-        </html>
-        """
-        msg.attach(MIMEText(html_content, "html"))
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+</head>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <h2 style="color: #2A0066;">¡Gracias por tu compra en Many Offers!</h2>
+    
+    <p>Hola {nombre},</p>
+    
+    <p>Aquí tienes tu código QR para tu cupón de <strong>{producto}</strong>.</p>
+    <p style="color: #666; font-size: 14px;">Cada código es único y válido solo una vez.</p>
+    
+    <div style="background-color: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0;">
+        <h3 style="margin-top: 0; color: #2A0066;">Detalles de tu compra:</h3>
+        <ul style="list-style: none; padding: 0;">
+            <li style="margin: 10px 0;"><strong>Producto:</strong> {producto}</li>
+            <li style="margin: 10px 0;"><strong>Monto:</strong> ${monto}</li>
+            <li style="margin: 10px 0;"><strong>Fecha:</strong> {fecha}</li>
+            <li style="margin: 10px 0;"><strong>Código:</strong> {codigo_unico}</li>
+        </ul>
+    </div>
+    
+    <div style="text-align: center; margin: 30px 0;">
+        <p style="margin-bottom: 15px;"><strong>Puedes presentar este código QR en el establecimiento para validar tu descuento:</strong></p>
+        <img src="data:image/png;base64,{qr_image_data}" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white;" />
+    </div>
+    
+    <div style="margin-top: 30px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
+        <p style="margin: 0; font-size: 14px;">O usar este enlace directo:</p>
+        <p style="margin: 10px 0 0 0;"><a href="{url_qr}" style="color: #2A0066; word-break: break-all;">{url_qr}</a></p>
+    </div>
+    
+    <p style="margin-top: 30px; color: #666; font-size: 14px;">¡Disfruta tu oferta!</p>
+</body>
+</html>
+"""
 
+        # Crear el mensaje usando SendGrid
+        message = Mail(
+            from_email=SENDGRID_FROM,
+            to_emails=to_email,
+            subject=subject,
+            plain_text_content=cuerpo_texto,
+            html_content=html_content
+        )
 
+        # Enviar el correo
         sg = SendGridAPIClient(SENDGRID_KEY)
         response = sg.send(message)
         print(f"✅ Email enviado a {to_email} con código {codigo_unico}. Status SendGrid: {response.status_code}")
 
     except Exception as e:
         print("❌ Error enviando correo con SendGrid:", e)
+        import traceback
+        traceback.print_exc()
 
 
 @app.route("/webhook", methods=["POST"])
