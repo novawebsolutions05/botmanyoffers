@@ -73,56 +73,32 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
     """
 
     try:
-        # Leer la imagen del QR y convertirla a base64 para incrustarla en el HTML
+        # Crear el mensaje de correo
+        msg = MIMEMultipart()
+        msg["From"] = SENDGRID_FROM
+        msg["To"] = to_email
+        msg["Subject"] = subject
+        msg.attach(MIMEText(cuerpo_texto, "plain"))
+
+        # Adjuntar la imagen del QR
         with open(qr_path, "rb") as f:
-            qr_b64 = base64.b64encode(f.read()).decode("utf-8")
+            img = MIMEImage(f.read())
+            img.add_header("Content-ID", "<qr>")
+            msg.attach(img)
 
-        html_contenido = f"""
+        # Agregar la URL al cuerpo del mensaje
+        html_content = f"""
         <html>
-        <body style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
-            <p>Hola {nombre},</p>
-
-            <p>¡Gracias por tu compra en <strong>Many Offers</strong>!</p>
-
-            <p>
-                Aquí tienes tu código QR para tu cupón de <strong>{producto}</strong>.<br>
-                Cada código es único y válido solo una vez.
-            </p>
-
-            <p><strong>Detalles de tu compra:</strong></p>
-            <ul>
-                <li>Producto: {producto}</li>
-                <li>Monto: ${monto}</li>
-                <li>Fecha: {fecha}</li>
-                <li>Código: {codigo_unico}</li>
-            </ul>
-
-            <p>Puedes presentar este código QR en el establecimiento para validar tu descuento:</p>
-
-            <p style="text-align:center;">
-                <img src="data:image/png;base64,{qr_b64}" alt="QR del cupón" />
-            </p>
-
-            <p>O usar este enlace directo:<br>
-                <a href="{url_qr}">{url_qr}</a>
-            </p>
-
-            <p>¡Disfruta tu oferta!<br>
-            El equipo de Many Offers</p>
+        <body>
+            <p>{cuerpo_texto}</p>
+            <img src="cid:qr" alt="QR del cupón" />
+            <p>O usar este enlace directo:</p>
+            <a href="{url_qr}">{url_qr}</a>
         </body>
         </html>
         """
+        msg.attach(MIMEText(html_content, "html"))
 
-        # Crear el mensaje de correo con SendGrid
-        message = Mail(
-            from_email=SENDGRID_FROM,
-            to_emails=to_email,
-            subject=subject,
-            html_content=html_contenido  # Directamente el HTML
-        )
-
-        # Añadir contenido de texto plano por compatibilidad
-        message.text_content = cuerpo_texto  # Aquí añadimos el contenido en texto plano
 
         sg = SendGridAPIClient(SENDGRID_KEY)
         response = sg.send(message)
