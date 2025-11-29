@@ -48,6 +48,8 @@ def generar_codigo_unico(longitud=8):
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr, qr_image_url):
     # Asunto sin caracteres especiales para evitar spam
     subject = f"Confirmacion de compra - Many Offers - {producto}"
+    
+    print(f"🔍 DEBUG: qr_path={qr_path}, qr_image_url={qr_image_url}")
 
     cuerpo_texto = f"""
 Hola {nombre},
@@ -103,7 +105,8 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
         
         <div style="text-align: center; margin: 30px 0;">
             <p style="margin-bottom: 15px; font-weight: bold;">Puedes presentar este código QR en el establecimiento para validar tu descuento:</p>
-            <img src="cid:qr_cupon" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white; display: block; margin: 0 auto;" />
+            <!-- Usar URL directa como fuente principal -->
+            <img src="{qr_image_url}" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white; display: block; margin: 0 auto;" />
         </div>
         
         <div style="margin-top: 30px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
@@ -120,23 +123,23 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
 </html>
 """
 
-        # Intentar primero con attachment inline (más confiable para Gmail)
-        use_attachment = True
+        # Crear el mensaje usando SendGrid con URL directa
+        # La URL es más confiable que attachments inline en muchos clientes
+        message = Mail(
+            from_email=SENDGRID_FROM,
+            to_emails=to_email,
+            subject=subject,
+            plain_text_content=cuerpo_texto,
+            html_content=html_content
+        )
+        
+        # Configurar reply-to para evitar spam
+        if SENDGRID_FROM:
+            message.reply_to = SENDGRID_FROM
+        
+        # Agregar attachment inline como respaldo (aunque usamos URL principal)
+        # Algunos clientes de correo prefieren attachments inline
         try:
-            # Crear el mensaje usando SendGrid
-            message = Mail(
-                from_email=SENDGRID_FROM,
-                to_emails=to_email,
-                subject=subject,
-                plain_text_content=cuerpo_texto,
-                html_content=html_content
-            )
-            
-            # Configurar reply-to para evitar spam
-            if SENDGRID_FROM:
-                message.reply_to = SENDGRID_FROM
-            
-            # Agregar attachment inline con Content-ID para el QR
             attachment = Attachment()
             attachment.file_content = qr_image_data
             attachment.file_type = "image/png"
@@ -144,26 +147,10 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
             attachment.disposition = "inline"
             attachment.content_id = "qr_cupon"
             message.add_attachment(attachment)
-            print(f"✅ Attachment QR agregado correctamente")
+            print(f"✅ Attachment QR agregado como respaldo con Content-ID: qr_cupon")
         except Exception as attach_error:
-            print(f"⚠️ Error al agregar attachment inline: {attach_error}")
-            # Si falla, usar URL directa en lugar de attachment
-            use_attachment = False
-            html_content_with_url = html_content.replace('src="cid:qr_cupon"', f'src="{qr_image_url}"')
-            print(f"🔄 Usando URL directa para el QR: {qr_image_url}")
-            
-            # Recrear el mensaje con la URL
-            message = Mail(
-                from_email=SENDGRID_FROM,
-                to_emails=to_email,
-                subject=subject,
-                plain_text_content=cuerpo_texto,
-                html_content=html_content_with_url
-            )
-            
-            # Configurar reply-to
-            if SENDGRID_FROM:
-                message.reply_to = SENDGRID_FROM
+            print(f"⚠️ No se pudo agregar attachment (continuando con URL): {attach_error}")
+            # No es crítico, la URL debería funcionar
         
         # Configurar tracking settings para mejor deliverability
         # Comentar temporalmente para evitar errores 400
@@ -338,16 +325,25 @@ def web():
 
 @app.route("/qr/<codigo>")
 def servir_qr(codigo):
-    """Sirve la imagen QR desde el servidor con headers CORS para Gmail"""
+    """Sirve la imagen QR desde el servidor con headers optimizados para Gmail"""
     qr_path = f"qr_{codigo}.png"
+    print(f"🔍 Intentando servir QR: {qr_path}, existe: {os.path.exists(qr_path)}")
+    
     if os.path.exists(qr_path):
         response = send_file(qr_path, mimetype='image/png')
-        # Agregar headers CORS y cache para que Gmail pueda cargar la imagen
+        # Headers críticos para que Gmail pueda cargar la imagen
         response.headers['Access-Control-Allow-Origin'] = '*'
-        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         response.headers['Content-Type'] = 'image/png'
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+        # Asegurar que la imagen sea accesible
+        response.headers['Content-Disposition'] = 'inline'
+        print(f"✅ QR servido correctamente: {qr_path}")
         return response
     else:
+        print(f"❌ QR no encontrado: {qr_path}")
         return jsonify({"error": "QR no encontrado"}), 404
 
 
