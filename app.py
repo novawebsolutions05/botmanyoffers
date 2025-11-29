@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
@@ -13,7 +13,7 @@ import base64
 
 # SendGrid
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail
+from sendgrid.helpers.mail import Mail, Attachment
 
 app = Flask(__name__)
 CORS(app)
@@ -45,7 +45,7 @@ def generar_codigo_unico(longitud=8):
     return ''.join(random.choice(caracteres) for _ in range(longitud))
 
 
-def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
+def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr, qr_image_url):
     subject = f"Tu cupón de Many Offers: {producto}"
 
     cuerpo_texto = f"""
@@ -68,11 +68,8 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
 """
 
     try:
-        # Leer la imagen QR y convertirla a base64
-        with open(qr_path, "rb") as f:
-            qr_image_data = base64.b64encode(f.read()).decode('utf-8')
-        
-        # Crear el contenido HTML con la imagen embebida en base64
+        # Crear el contenido HTML usando URL pública de la imagen QR
+        # Esto es más confiable que attachments inline, especialmente para Gmail
         html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -99,7 +96,7 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
     
     <div style="text-align: center; margin: 30px 0;">
         <p style="margin-bottom: 15px;"><strong>Puedes presentar este código QR en el establecimiento para validar tu descuento:</strong></p>
-        <img src="data:image/png;base64,{qr_image_data}" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white;" />
+        <img src="{qr_image_url}" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white;" />
     </div>
     
     <div style="margin-top: 30px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
@@ -207,7 +204,10 @@ def webhook():
     # 4️⃣ Guardar datos en Google Sheets
     sheet.append_row([nombre, correo, productos, codigo_unico, total_str, "-", fecha, "NO"])
 
-    # 5️⃣ Enviar email al cliente (con manejo de errores interno)
+    # 5️⃣ Crear URL pública para la imagen QR
+    qr_url = f"https://botmanyoffers.onrender.com/qr/{codigo_unico}"
+
+    # 6️⃣ Enviar email al cliente (con manejo de errores interno)
     send_email_with_qr(
         to_email=correo,
         nombre=nombre,
@@ -216,14 +216,11 @@ def webhook():
         codigo_unico=codigo_unico,
         monto=total_str,
         fecha=fecha,
-        url_qr=url_qr
+        url_qr=url_qr,
+        qr_image_url=qr_url
     )
 
-    # 6️⃣ Limpiar archivo QR local
-    try:
-        os.remove(qr_path)
-    except Exception as e:
-        print("No se pudo eliminar el archivo QR local:", e)
+    # 7️⃣ NO eliminar el archivo QR - se necesita para servir desde la URL pública
 
     return jsonify({"status": "success", "message": "Datos guardados, QR generado y correo procesado"}), 200
 
@@ -271,6 +268,16 @@ def validar():
 @app.route("/web")
 def web():
     return render_template("validador.html")
+
+
+@app.route("/qr/<codigo>")
+def servir_qr(codigo):
+    """Sirve la imagen QR desde el servidor"""
+    qr_path = f"qr_{codigo}.png"
+    if os.path.exists(qr_path):
+        return send_file(qr_path, mimetype='image/png')
+    else:
+        return jsonify({"error": "QR no encontrado"}), 404
 
 
 if __name__ == "__main__":
