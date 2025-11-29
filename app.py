@@ -13,7 +13,7 @@ import base64
 
 # SendGrid
 from sendgrid import SendGridAPIClient
-from sendgrid.helpers.mail import Mail, Attachment
+from sendgrid.helpers.mail import Mail, Attachment, TrackingSettings, ClickTracking, OpenTracking
 
 app = Flask(__name__)
 CORS(app)
@@ -46,7 +46,8 @@ def generar_codigo_unico(longitud=8):
 
 
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr, qr_image_url):
-    subject = f"Tu cupón de Many Offers: {producto}"
+    # Asunto sin caracteres especiales para evitar spam
+    subject = f"Confirmacion de compra - Many Offers - {producto}"
 
     cuerpo_texto = f"""
 Hola {nombre},
@@ -68,55 +69,95 @@ Puedes presentar este código QR en el establecimiento para validar tu descuento
 """
 
     try:
-        # Crear el contenido HTML usando URL pública de la imagen QR
-        # Esto es más confiable que attachments inline, especialmente para Gmail
+        # Leer la imagen QR y convertirla a base64 para attachment inline
+        with open(qr_path, "rb") as f:
+            qr_image_data = base64.b64encode(f.read()).decode('utf-8')
+        
+        # Crear el contenido HTML usando Content-ID para attachment inline
+        # Este es el método más confiable para Gmail
         html_content = f"""
 <!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 </head>
-<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
-    <h2 style="color: #2A0066;">¡Gracias por tu compra en Many Offers!</h2>
-    
-    <p>Hola {nombre},</p>
-    
-    <p>Aquí tienes tu código QR para tu cupón de <strong>{producto}</strong>.</p>
-    <p style="color: #666; font-size: 14px;">Cada código es único y válido solo una vez.</p>
-    
-    <div style="background-color: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0;">
-        <h3 style="margin-top: 0; color: #2A0066;">Detalles de tu compra:</h3>
-        <ul style="list-style: none; padding: 0;">
-            <li style="margin: 10px 0;"><strong>Producto:</strong> {producto}</li>
-            <li style="margin: 10px 0;"><strong>Monto:</strong> ${monto}</li>
-            <li style="margin: 10px 0;"><strong>Fecha:</strong> {fecha}</li>
-            <li style="margin: 10px 0;"><strong>Código:</strong> {codigo_unico}</li>
-        </ul>
+<body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #ffffff;">
+    <div style="background-color: #ffffff; padding: 20px;">
+        <h2 style="color: #2A0066; margin-top: 0;">¡Gracias por tu compra en Many Offers!</h2>
+        
+        <p>Hola {nombre},</p>
+        
+        <p>Aquí tienes tu código QR para tu cupón de <strong>{producto}</strong>.</p>
+        <p style="color: #666; font-size: 14px;">Cada código es único y válido solo una vez.</p>
+        
+        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 10px; margin: 20px 0;">
+            <h3 style="margin-top: 0; color: #2A0066;">Detalles de tu compra:</h3>
+            <ul style="list-style: none; padding: 0; margin: 0;">
+                <li style="margin: 10px 0;"><strong>Producto:</strong> {producto}</li>
+                <li style="margin: 10px 0;"><strong>Monto:</strong> ${monto}</li>
+                <li style="margin: 10px 0;"><strong>Fecha:</strong> {fecha}</li>
+                <li style="margin: 10px 0;"><strong>Código:</strong> {codigo_unico}</li>
+            </ul>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+            <p style="margin-bottom: 15px; font-weight: bold;">Puedes presentar este código QR en el establecimiento para validar tu descuento:</p>
+            <img src="cid:qr_cupon" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white; display: block; margin: 0 auto;" />
+        </div>
+        
+        <div style="margin-top: 30px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
+            <p style="margin: 0; font-size: 14px;">O usar este enlace directo:</p>
+            <p style="margin: 10px 0 0 0;"><a href="{url_qr}" style="color: #2A0066; word-break: break-all; text-decoration: none;">{url_qr}</a></p>
+        </div>
+        
+        <p style="margin-top: 30px; color: #666; font-size: 14px;">¡Disfruta tu oferta!</p>
+        
+        <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+        <p style="font-size: 12px; color: #999; text-align: center;">Este es un correo de confirmación de compra. Si no realizaste esta compra, por favor ignora este mensaje.</p>
     </div>
-    
-    <div style="text-align: center; margin: 30px 0;">
-        <p style="margin-bottom: 15px;"><strong>Puedes presentar este código QR en el establecimiento para validar tu descuento:</strong></p>
-        <img src="{qr_image_url}" alt="QR del cupón" style="max-width: 300px; height: auto; border: 2px solid #2A0066; border-radius: 10px; padding: 10px; background-color: white;" />
-    </div>
-    
-    <div style="margin-top: 30px; padding: 15px; background-color: #f0f0f0; border-radius: 5px;">
-        <p style="margin: 0; font-size: 14px;">O usar este enlace directo:</p>
-        <p style="margin: 10px 0 0 0;"><a href="{url_qr}" style="color: #2A0066; word-break: break-all;">{url_qr}</a></p>
-    </div>
-    
-    <p style="margin-top: 30px; color: #666; font-size: 14px;">¡Disfruta tu oferta!</p>
 </body>
 </html>
 """
 
-        # Crear el mensaje usando SendGrid
-        message = Mail(
-            from_email=SENDGRID_FROM,
-            to_emails=to_email,
-            subject=subject,
-            plain_text_content=cuerpo_texto,
-            html_content=html_content
-        )
+        # Crear el mensaje usando SendGrid con nombre de remitente profesional
+        # Usar un nombre de remitente ayuda a evitar spam
+        from_name = "Many Offers"
+        if "@" in str(SENDGRID_FROM):
+            # Si SENDGRID_FROM es un email, crear un formato con nombre
+            message = Mail(
+                from_email=(from_name, SENDGRID_FROM),
+                to_emails=to_email,
+                subject=subject,
+                plain_text_content=cuerpo_texto,
+                html_content=html_content
+            )
+        else:
+            message = Mail(
+                from_email=SENDGRID_FROM,
+                to_emails=to_email,
+                subject=subject,
+                plain_text_content=cuerpo_texto,
+                html_content=html_content
+            )
+        
+        # Configurar headers para evitar spam
+        message.reply_to = SENDGRID_FROM
+        
+        # Agregar attachment inline con Content-ID para el QR
+        attachment = Attachment()
+        attachment.file_content = qr_image_data
+        attachment.file_type = "image/png"
+        attachment.file_name = f"qr_{codigo_unico}.png"
+        attachment.disposition = "inline"
+        attachment.content_id = "qr_cupon"
+        message.add_attachment(attachment)
+        
+        # Configurar tracking settings para mejor deliverability
+        tracking_settings = TrackingSettings()
+        tracking_settings.click_tracking = ClickTracking(enable=True)
+        tracking_settings.open_tracking = OpenTracking(enable=True)
+        message.tracking_settings = tracking_settings
 
         # Enviar el correo
         sg = SendGridAPIClient(SENDGRID_KEY)
@@ -272,10 +313,15 @@ def web():
 
 @app.route("/qr/<codigo>")
 def servir_qr(codigo):
-    """Sirve la imagen QR desde el servidor"""
+    """Sirve la imagen QR desde el servidor con headers CORS para Gmail"""
     qr_path = f"qr_{codigo}.png"
     if os.path.exists(qr_path):
-        return send_file(qr_path, mimetype='image/png')
+        response = send_file(qr_path, mimetype='image/png')
+        # Agregar headers CORS y cache para que Gmail pueda cargar la imagen
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Cache-Control'] = 'public, max-age=31536000'
+        response.headers['Content-Type'] = 'image/png'
+        return response
     else:
         return jsonify({"error": "QR no encontrado"}), 404
 
