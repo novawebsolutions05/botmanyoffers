@@ -208,22 +208,95 @@ def webhook():
                 return inner[0].replace("'", "").replace('"', "").strip()
 
         return value.strip()
+    
+    def extract_real_data_from_wix_payload(data):
+        """Intenta extraer los datos reales del payload completo de Wix"""
+        result = {}
+        
+        # Wix suele enviar el pedido completo en diferentes lugares del payload
+        # Intentar encontrar el objeto del pedido
+        order = None
+        
+        # Buscar en diferentes ubicaciones comunes
+        if isinstance(data, dict):
+            # Buscar directamente
+            if 'order' in data:
+                order = data['order']
+            elif 'data' in data and isinstance(data['data'], dict) and 'order' in data['data']:
+                order = data['data']['order']
+            elif 'payload' in data and isinstance(data['payload'], dict) and 'order' in data['payload']:
+                order = data['payload']['order']
+            
+            # Si encontramos el pedido, extraer información real
+            if order and isinstance(order, dict):
+                # Extraer productos reales
+                if 'lineItems' in order and isinstance(order['lineItems'], list):
+                    productos_list = []
+                    for item in order['lineItems']:
+                        if isinstance(item, dict):
+                            product_name = item.get('name') or item.get('productName') or item.get('title', '')
+                            if product_name:
+                                productos_list.append(product_name)
+                    if productos_list:
+                        result['productos'] = ', '.join(productos_list)
+                
+                # Extraer fecha real
+                if 'dateCreated' in order:
+                    result['fecha'] = order['dateCreated']
+                elif 'createdDate' in order:
+                    result['fecha'] = order['createdDate']
+                elif 'date' in order:
+                    result['fecha'] = order['date']
+                
+                # Extraer total real
+                if 'priceData' in order and isinstance(order['priceData'], dict):
+                    total = order['priceData'].get('total') or order['priceData'].get('subtotal', '0')
+                    result['total'] = str(total)
+                elif 'total' in order:
+                    result['total'] = str(order['total'])
+                elif 'price' in order:
+                    result['total'] = str(order['price'])
+        
+        return result
 
     # --- Recibir datos del webhook ---
-    data = request.get_json(force=True, silent=True)
-    if not data:
-        data = request.form.to_dict()
-    if "data" in data:
-        data = data["data"]
-
-    print("Datos recibidos:", data)
-    print("Datos recibidos desde Wix:", data)
-
-    nombre = clean_wix_value(data.get("nombre", ""))
-    correo = clean_wix_value(data.get("correo", ""))
-    productos = clean_wix_value(data.get("productos", ""))
-    total = clean_wix_value(data.get("total", ""))
-    fecha = clean_wix_value(data.get("fecha", ""))
+    raw_data = request.get_json(force=True, silent=True)
+    if not raw_data:
+        raw_data = request.form.to_dict()
+    
+    # Guardar una copia del payload completo para debugging
+    print("=" * 80)
+    print("📦 PAYLOAD COMPLETO DE WIX:")
+    print(json.dumps(raw_data, indent=2, ensure_ascii=False))
+    print("=" * 80)
+    
+    # Intentar extraer datos reales del payload
+    real_data = extract_real_data_from_wix_payload(raw_data)
+    print(f"🔍 Datos reales extraídos: {real_data}")
+    
+    # Usar el payload completo o el data anidado
+    data = raw_data
+    if "data" in raw_data:
+        data = raw_data["data"]
+    
+    # Combinar datos: primero los del payload, luego los reales extraídos, luego los limpios
+    nombre = clean_wix_value(data.get("nombre", raw_data.get("nombre", "")))
+    correo = clean_wix_value(data.get("correo", raw_data.get("correo", "")))
+    
+    # Para productos, usar datos reales si están disponibles, sino limpiar el valor
+    productos = real_data.get("productos") or clean_wix_value(data.get("productos", raw_data.get("productos", "")))
+    total = real_data.get("total") or clean_wix_value(data.get("total", raw_data.get("total", "")))
+    fecha = real_data.get("fecha") or clean_wix_value(data.get("fecha", raw_data.get("fecha", "")))
+    
+    # Si los productos siguen siendo funciones de Wix, usar un valor por defecto más descriptivo
+    if productos and (productos.startswith("JOIN(") or productos.startswith("TEXT(") or "Nombre del item" in productos or productos.strip() == ""):
+        productos = "Producto de Many Offers"
+        print("⚠️ No se pudo extraer el nombre del producto, usando valor por defecto")
+    
+    # Si la fecha sigue siendo una función de Wix, usar la fecha actual
+    if fecha and (fecha.startswith("TEXT(") or "Fecha de creación" in fecha or fecha.strip() == ""):
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print("⚠️ No se pudo extraer la fecha del pedido, usando fecha actual")
 
     # --- Normalizar total (intentar convertirlo a número) ---
     try:
@@ -235,11 +308,24 @@ def webhook():
 
     # --- Normalizar fecha ---
     try:
-        if "T" in fecha:
-            fecha_obj = datetime.fromisoformat(fecha.replace("Z", ""))
-            fecha = fecha_obj.strftime("%Y-%m-%d %H:%M:%S")
-    except:
-        pass
+        if fecha and isinstance(fecha, str):
+            # Intentar diferentes formatos de fecha
+            if "T" in fecha:
+                # Formato ISO: 2024-01-15T10:30:00Z
+                fecha = fecha.replace("Z", "+00:00")
+                fecha_obj = datetime.fromisoformat(fecha)
+                fecha = fecha_obj.strftime("%Y-%m-%d %H:%M:%S")
+            elif "/" in fecha and len(fecha) > 8:
+                # Formato con barras: 2024/01/15
+                try:
+                    fecha_obj = datetime.strptime(fecha.split()[0], "%Y/%m/%d")
+                    fecha = fecha_obj.strftime("%Y-%m-%d %H:%M:%S")
+                except:
+                    pass
+    except Exception as fecha_error:
+        print(f"⚠️ Error normalizando fecha: {fecha_error}")
+        # Si falla, usar fecha actual
+        fecha = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
     print(f"\n🧾 Datos finales limpiados:\nNombre: {nombre}\nCorreo: {correo}\nProductos: {productos}\nTotal: {total_str}\nFecha: {fecha}\n")
 
