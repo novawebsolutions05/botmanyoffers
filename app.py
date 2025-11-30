@@ -213,49 +213,93 @@ def webhook():
         """Intenta extraer los datos reales del payload completo de Wix"""
         result = {}
         
-        # Wix suele enviar el pedido completo en diferentes lugares del payload
-        # Intentar encontrar el objeto del pedido
-        order = None
-        
-        # Buscar en diferentes ubicaciones comunes
-        if isinstance(data, dict):
-            # Buscar directamente
-            if 'order' in data:
-                order = data['order']
-            elif 'data' in data and isinstance(data['data'], dict) and 'order' in data['data']:
-                order = data['data']['order']
-            elif 'payload' in data and isinstance(data['payload'], dict) and 'order' in data['payload']:
-                order = data['payload']['order']
+        def buscar_productos_en_objeto(obj, productos_list):
+            """Función recursiva para buscar nombres de productos en cualquier parte del objeto"""
+            if isinstance(obj, dict):
+                # Buscar directamente campos comunes de productos
+                for key in ['name', 'productName', 'title', 'product', 'itemName', 'productTitle']:
+                    if key in obj and obj[key] and isinstance(obj[key], str):
+                        nombre = obj[key].strip()
+                        # Verificar que no sea un placeholder
+                        if nombre and nombre not in ['Nombre del item', 'Nombre del ítem', 'Item Name', '']:
+                            if nombre not in productos_list:
+                                productos_list.append(nombre)
+                
+                # Buscar en arrays comunes
+                for array_key in ['lineItems', 'items', 'products', 'cartItems', 'orderItems']:
+                    if array_key in obj and isinstance(obj[array_key], list):
+                        for item in obj[array_key]:
+                            buscar_productos_en_objeto(item, productos_list)
+                
+                # Buscar recursivamente en todos los valores
+                for value in obj.values():
+                    buscar_productos_en_objeto(value, productos_list)
             
-            # Si encontramos el pedido, extraer información real
-            if order and isinstance(order, dict):
-                # Extraer productos reales
-                if 'lineItems' in order and isinstance(order['lineItems'], list):
-                    productos_list = []
-                    for item in order['lineItems']:
-                        if isinstance(item, dict):
-                            product_name = item.get('name') or item.get('productName') or item.get('title', '')
-                            if product_name:
-                                productos_list.append(product_name)
-                    if productos_list:
-                        result['productos'] = ', '.join(productos_list)
+            elif isinstance(obj, list):
+                for item in obj:
+                    buscar_productos_en_objeto(item, productos_list)
+        
+        # Buscar productos en todo el payload
+        productos_list = []
+        buscar_productos_en_objeto(data, productos_list)
+        
+        if productos_list:
+            result['productos'] = ', '.join(productos_list)
+            print(f"✅ Productos encontrados: {result['productos']}")
+        
+        # Buscar fecha en diferentes ubicaciones
+        def buscar_fecha_en_objeto(obj):
+            """Buscar fecha en el objeto"""
+            if isinstance(obj, dict):
+                for key in ['dateCreated', 'createdDate', 'date', 'orderDate', 'purchaseDate', 'timestamp']:
+                    if key in obj and obj[key]:
+                        return obj[key]
+                # Buscar recursivamente
+                for value in obj.values():
+                    fecha = buscar_fecha_en_objeto(value)
+                    if fecha:
+                        return fecha
+            elif isinstance(obj, list):
+                for item in obj:
+                    fecha = buscar_fecha_en_objeto(item)
+                    if fecha:
+                        return fecha
+            return None
+        
+        fecha_encontrada = buscar_fecha_en_objeto(data)
+        if fecha_encontrada:
+            result['fecha'] = fecha_encontrada
+        
+        # Buscar total en diferentes ubicaciones
+        def buscar_total_en_objeto(obj):
+            """Buscar total en el objeto"""
+            if isinstance(obj, dict):
+                # Buscar en priceData
+                if 'priceData' in obj and isinstance(obj['priceData'], dict):
+                    total = obj['priceData'].get('total') or obj['priceData'].get('subtotal')
+                    if total:
+                        return str(total)
                 
-                # Extraer fecha real
-                if 'dateCreated' in order:
-                    result['fecha'] = order['dateCreated']
-                elif 'createdDate' in order:
-                    result['fecha'] = order['createdDate']
-                elif 'date' in order:
-                    result['fecha'] = order['date']
+                # Buscar directamente
+                for key in ['total', 'totalPrice', 'amount', 'price', 'subtotal']:
+                    if key in obj and obj[key]:
+                        return str(obj[key])
                 
-                # Extraer total real
-                if 'priceData' in order and isinstance(order['priceData'], dict):
-                    total = order['priceData'].get('total') or order['priceData'].get('subtotal', '0')
-                    result['total'] = str(total)
-                elif 'total' in order:
-                    result['total'] = str(order['total'])
-                elif 'price' in order:
-                    result['total'] = str(order['price'])
+                # Buscar recursivamente
+                for value in obj.values():
+                    total = buscar_total_en_objeto(value)
+                    if total:
+                        return total
+            elif isinstance(obj, list):
+                for item in obj:
+                    total = buscar_total_en_objeto(item)
+                    if total:
+                        return total
+            return None
+        
+        total_encontrado = buscar_total_en_objeto(data)
+        if total_encontrado:
+            result['total'] = total_encontrado
         
         return result
 
@@ -288,10 +332,31 @@ def webhook():
     total = real_data.get("total") or clean_wix_value(data.get("total", raw_data.get("total", "")))
     fecha = real_data.get("fecha") or clean_wix_value(data.get("fecha", raw_data.get("fecha", "")))
     
-    # Si los productos siguen siendo funciones de Wix, usar un valor por defecto más descriptivo
-    if productos and (productos.startswith("JOIN(") or productos.startswith("TEXT(") or "Nombre del item" in productos or productos.strip() == ""):
+    # Log detallado de lo que se encontró
+    print(f"📊 RESUMEN DE EXTRACCIÓN:")
+    print(f"   - Productos extraídos: {real_data.get('productos', 'NO ENCONTRADO')}")
+    print(f"   - Productos después de limpiar: {productos}")
+    print(f"   - Total extraído: {real_data.get('total', 'NO ENCONTRADO')}")
+    print(f"   - Total después de limpiar: {total}")
+    print(f"   - Fecha extraída: {real_data.get('fecha', 'NO ENCONTRADO')}")
+    print(f"   - Fecha después de limpiar: {fecha}")
+    
+    # Si los productos siguen siendo funciones de Wix o placeholders, usar un valor por defecto más descriptivo
+    productos_lower = productos.lower() if productos else ""
+    es_placeholder = (
+        productos.startswith("JOIN(") or 
+        productos.startswith("TEXT(") or 
+        "nombre del item" in productos_lower or 
+        "nombre del ítem" in productos_lower or
+        "item name" in productos_lower or
+        productos.strip() == "" or
+        productos.strip() == "," or
+        productos.strip().endswith(",") and len(productos.strip()) < 20  # Solo una coma o muy corto
+    )
+    
+    if es_placeholder:
         productos = "Producto de Many Offers"
-        print("⚠️ No se pudo extraer el nombre del producto, usando valor por defecto")
+        print(f"⚠️ Producto detectado como placeholder: '{productos}', usando valor por defecto")
     
     # Si la fecha sigue siendo una función de Wix, usar la fecha actual
     if fecha and (fecha.startswith("TEXT(") or "Fecha de creación" in fecha or fecha.strip() == ""):
