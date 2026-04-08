@@ -13,7 +13,6 @@ import random
 import os
 import uuid
 import json
-from dotenv import load_dotenv
 import threading
 
 # Cargar variables de entorno
