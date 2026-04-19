@@ -10,3 +10,4 @@ Flask-Cors
 gspread
 oauth2client
 sendgrid
+python-dotenv
