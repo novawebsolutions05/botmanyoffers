@@ -4,10 +4,9 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import qrcode
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.image import MIMEImage
+import sendgrid
+from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+import base64
 import os
 import uuid
 import json
@@ -34,11 +33,9 @@ sheet = client.open_by_key(SPREADSHEET_ID).sheet1
 CODE_COL = 4
 CANJEADO_COL = 8
 
-# --- Email ---
-SMTP_SERVER = "smtp.gmail.com"
-SMTP_PORT = 587
-EMAIL_USER = os.environ.get("EMAIL_USER", "novawebsolutions05@gmail.com")
-EMAIL_PASS = os.environ.get("EMAIL_PASS", "aupc pzqx wybo tndn")
+# --- Email (SendGrid) ---
+SENDGRID_API_KEY = os.environ.get("SENDGRID_KEY", "")
+SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM", "noreply@manyoffers.shop")
 
 # --- WooCommerce Secret (para verificar firma) ---
 # Debes poner este mismo valor en WooCommerce > Webhooks > Secret
@@ -163,44 +160,52 @@ def procesar_pedido(data):
 
 
 # =========================
-# 📧 ENVIAR EMAIL CON QR
+# 📧 ENVIAR EMAIL CON QR (SendGrid)
 # =========================
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
-    subject = f"Tu cupón de Many Offers: {producto}"
-    body = f"""Hola {nombre},
+    subject = f"🎉 Tu cupón de Many Offers: {producto}"
+
+    # Leer y codificar el QR en base64
+    with open(qr_path, "rb") as f:
+        qr_bytes = f.read()
+    qr_b64 = base64.b64encode(qr_bytes).decode()
+
+    # Cuerpo del email (texto plano como fallback)
+    body_text = f"""Hola {nombre},
 
 ¡Gracias por tu compra en Many Offers!
 
-Aquí tienes tu código QR para tu cupón de {producto}.
+Tu cupón: {producto}
+Código único: {codigo_unico}
+Monto: ${monto}
+Fecha: {fecha}
+
+Presenta el QR adjunto en el establecimiento para validar tu descuento.
 Cada código es único y válido solo una vez.
 
-Detalles:
-- Producto: {producto}
-- Monto: ${monto}
-- Fecha: {fecha}
-- Código: {codigo_unico}
-
-Presenta este QR en el establecimiento para validar tu descuento.
-
 ¡Disfruta tu oferta!
+El equipo de Many Offers
 """
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_USER
-    msg["To"] = to_email
-    msg["Subject"] = subject
-    msg.attach(MIMEText(body, "plain"))
 
-    with open(qr_path, "rb") as f:
-        img = MIMEImage(f.read())
-        img.add_header("Content-Disposition", "attachment", filename="cupon_qr.png")
-        msg.attach(img)
+    message = Mail(
+        from_email=SENDGRID_FROM_EMAIL,
+        to_emails=to_email,
+        subject=subject,
+        plain_text_content=body_text
+    )
 
-    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
-        server.starttls()
-        server.login(EMAIL_USER, EMAIL_PASS)
-        server.send_message(msg)
+    # Adjuntar el QR como imagen
+    attachment = Attachment(
+        file_content=FileContent(qr_b64),
+        file_name=FileName("cupon_qr.png"),
+        file_type=FileType("image/png"),
+        disposition=Disposition("attachment")
+    )
+    message.attachment = attachment
 
-    print(f"📧 Email enviado a {to_email}")
+    sg = sendgrid.SendGridAPIClient(api_key=SENDGRID_API_KEY)
+    response = sg.send(message)
+    print(f"📧 Email enviado a {to_email} — Status: {response.status_code}")
 
 
 # =========================
