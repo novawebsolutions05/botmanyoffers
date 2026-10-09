@@ -73,8 +73,20 @@ def webhook():
         print("❌ Firma inválida")
         return jsonify({"status": "error", "message": "Firma inválida"}), 401
 
-    data = json.loads(payload_bytes) if payload_bytes else {}
+    # Parsear JSON de forma segura
+    try:
+        data = json.loads(payload_bytes) if payload_bytes else {}
+    except (json.JSONDecodeError, Exception):
+        # WooCommerce a veces envía un ping de prueba que no es JSON válido
+        print("⚠️ Payload no es JSON válido, ignorando (posible ping de prueba)")
+        return jsonify({"status": "ok", "message": "Ping recibido"}), 200
+
     print("📩 Webhook WooCommerce recibido:", data.get("id", "sin id"))
+
+    # Ignorar pings de prueba de WooCommerce (payload vacío o sin campos de pedido)
+    if not data or ("id" not in data and "status" not in data):
+        print("⚠️ Ping de prueba de WooCommerce, ignorando")
+        return jsonify({"status": "ok", "message": "Ping recibido"}), 200
 
     # Solo procesar pedidos completados o procesando
     estado = data.get("status", "")
