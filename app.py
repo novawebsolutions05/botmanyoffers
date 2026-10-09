@@ -4,8 +4,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import qrcode
-import sendgrid
-from sendgrid.helpers.mail import Mail, Attachment, FileContent, FileName, FileType, Disposition
+import resend
 import base64
 import os
 import uuid
@@ -33,9 +32,9 @@ sheet = client.open_by_key(SPREADSHEET_ID).sheet1
 CODE_COL = 4
 CANJEADO_COL = 8
 
-# --- Email (SendGrid) ---
-SENDGRID_API_KEY = os.environ.get("SENDGRID_KEY", "")
-SENDGRID_FROM_EMAIL = os.environ.get("SENDGRID_FROM", "noreply@manyoffers.shop")
+# --- Email (Resend) ---
+resend.api_key = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM_EMAIL = os.environ.get("RESEND_FROM", "onboarding@resend.dev")
 
 # --- WooCommerce Secret (para verificar firma) ---
 # Debes poner este mismo valor en WooCommerce > Webhooks > Secret
@@ -160,7 +159,7 @@ def procesar_pedido(data):
 
 
 # =========================
-# 📧 ENVIAR EMAIL CON QR (SendGrid)
+# 📧 ENVIAR EMAIL CON QR (Resend)
 # =========================
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
     subject = f"🎉 Tu cupón de Many Offers: {producto}"
@@ -170,7 +169,7 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
         qr_bytes = f.read()
     qr_b64 = base64.b64encode(qr_bytes).decode()
 
-    # Cuerpo del email (texto plano como fallback)
+    # Cuerpo del email en texto plano
     body_text = f"""Hola {nombre},
 
 ¡Gracias por tu compra en Many Offers!
@@ -187,25 +186,22 @@ Cada código es único y válido solo una vez.
 El equipo de Many Offers
 """
 
-    message = Mail(
-        from_email=SENDGRID_FROM_EMAIL,
-        to_emails=to_email,
-        subject=subject,
-        plain_text_content=body_text
-    )
+    params = {
+        "from": RESEND_FROM_EMAIL,
+        "to": [to_email],
+        "subject": subject,
+        "text": body_text,
+        "attachments": [
+            {
+                "filename": "cupon_qr.png",
+                "content": qr_b64,
+                "content_type": "image/png"
+            }
+        ]
+    }
 
-    # Adjuntar el QR como imagen
-    attachment = Attachment(
-        file_content=FileContent(qr_b64),
-        file_name=FileName("cupon_qr.png"),
-        file_type=FileType("image/png"),
-        disposition=Disposition("attachment")
-    )
-    message.attachment = attachment
-
-    sg = sendgrid.SendGridAPIClient(api_key=SENDGRID_API_KEY)
-    response = sg.send(message)
-    print(f"📧 Email enviado a {to_email} — Status: {response.status_code}")
+    response = resend.Emails.send(params)
+    print(f"📧 Email enviado a {to_email} — ID: {response.get('id', 'N/A')}")
 
 
 # =========================

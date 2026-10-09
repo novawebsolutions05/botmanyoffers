@@ -9,5 +9,5 @@ pillow
 Flask-Cors
 gspread
 oauth2client
-sendgrid
+resend
 python-dotenv
