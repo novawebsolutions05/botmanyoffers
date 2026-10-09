@@ -130,7 +130,7 @@ def procesar_pedido(data):
 
         # Generar código único
         codigo_unico = str(uuid.uuid4())[:8].upper()
-        url_qr = f"https://www.manyoffers.net/validar?codigo={codigo_unico}"
+        url_qr = f"https://manyoffers.shop/validar?codigo={codigo_unico}"
 
         # Generar QR
         qr_img = qrcode.make(url_qr)
@@ -156,7 +156,10 @@ def procesar_pedido(data):
         print(f"✅ Pedido procesado: {codigo_unico}")
 
     except Exception as e:
+        import traceback
         print("❌ Error procesando pedido:", str(e))
+        print("📋 Traceback completo:")
+        traceback.print_exc()
 
 
 # =========================
