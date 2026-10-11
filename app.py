@@ -170,9 +170,18 @@ TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "email_cupo
 try:
     with open(LOGO_PATH, "rb") as f:
         LOGO_B64 = base64.b64encode(f.read()).decode()
+    print(f"✅ Logo cargado correctamente desde: {LOGO_PATH}")
 except Exception as e:
     LOGO_B64 = ""
     print(f"⚠️ No se pudo cargar el logo: {e}")
+
+# Verificar que el template existe
+try:
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        _ = f.read()
+    print(f"✅ Template HTML cargado correctamente desde: {TEMPLATE_PATH}")
+except Exception as e:
+    print(f"❌ ERROR CRÍTICO: No se pudo cargar el template HTML: {e}")
 
 
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
