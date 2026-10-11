@@ -191,7 +191,11 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
     with open(qr_path, "rb") as f:
         qr_b64 = base64.b64encode(f.read()).decode()
 
+    # Codificar logo en base64
+    logo_b64 = LOGO_B64
+
     # Cargar template HTML y reemplazar placeholders
+    # Las imágenes se referencian con cid: para attachments inline
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         html_body = f.read()
 
@@ -201,8 +205,8 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
         .replace("{{MONTO}}", str(monto))
         .replace("{{FECHA}}", fecha)
         .replace("{{CODIGO}}", codigo_unico)
-        .replace("{{QR_B64}}", qr_b64)
-        .replace("{{LOGO_B64}}", LOGO_B64)
+        .replace("data:image/png;base64,{{QR_B64}}", "cid:cupon_qr")
+        .replace("data:image/png;base64,{{LOGO_B64}}", "cid:logo_many_offers")
     )
 
     # Texto plano como fallback
@@ -225,6 +229,22 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
         "subject": subject,
         "html": html_body,
         "text": body_text,
+        "attachments": [
+            {
+                "filename": "logo.png",
+                "content": logo_b64,
+                "content_type": "image/png",
+                "content_id": "logo_many_offers",
+                "inline": True
+            },
+            {
+                "filename": "cupon_qr.png",
+                "content": qr_b64,
+                "content_type": "image/png",
+                "content_id": "cupon_qr",
+                "inline": True
+            }
+        ]
     }
 
     response = resend.Emails.send(params)
