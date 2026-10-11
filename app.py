@@ -159,49 +159,67 @@ def procesar_pedido(data):
 
 
 # =========================
-# 📧 ENVIAR EMAIL CON QR (Resend)
+# 📧 ENVIAR EMAIL CON QR (Resend - HTML)
 # =========================
+
+# Ruta al logo (relativa al directorio del script)
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "Logo-Zippy-Blanco-total.png")
+TEMPLATE_PATH = os.path.join(os.path.dirname(__file__), "templates", "email_cupon.html")
+
+# Pre-cargar el logo en base64 una sola vez al arrancar
+try:
+    with open(LOGO_PATH, "rb") as f:
+        LOGO_B64 = base64.b64encode(f.read()).decode()
+except Exception as e:
+    LOGO_B64 = ""
+    print(f"⚠️ No se pudo cargar el logo: {e}")
+
+
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
     subject = f"🎉 Tu cupón de Many Offers: {producto}"
 
-    # Leer y codificar el QR en base64
+    # Codificar QR en base64
     with open(qr_path, "rb") as f:
-        qr_bytes = f.read()
-    qr_b64 = base64.b64encode(qr_bytes).decode()
+        qr_b64 = base64.b64encode(f.read()).decode()
 
-    # Cuerpo del email en texto plano
-    body_text = f"""Hola {nombre},
+    # Cargar template HTML y reemplazar placeholders
+    with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
+        html_body = f.read()
 
-¡Gracias por tu compra en Many Offers!
+    html_body = (html_body
+        .replace("{{NOMBRE}}", nombre)
+        .replace("{{PRODUCTO}}", producto)
+        .replace("{{MONTO}}", str(monto))
+        .replace("{{FECHA}}", fecha)
+        .replace("{{CODIGO}}", codigo_unico)
+        .replace("{{QR_B64}}", qr_b64)
+        .replace("{{LOGO_B64}}", LOGO_B64)
+    )
 
-Tu cupón: {producto}
-Código único: {codigo_unico}
-Monto: ${monto}
-Fecha: {fecha}
-
-Presenta el QR adjunto en el establecimiento para validar tu descuento.
-Cada código es único y válido solo una vez.
-
-¡Disfruta tu oferta!
-El equipo de Many Offers
-"""
+    # Texto plano como fallback
+    body_text = (
+        f"Hola {nombre},\n\n"
+        f"¡Gracias por tu compra en Many Offers!\n\n"
+        f"Cupón: {producto}\n"
+        f"Código único: {codigo_unico}\n"
+        f"Monto: ${monto}\n"
+        f"Fecha: {fecha}\n\n"
+        f"Presenta este código en el establecimiento para canjear tu descuento.\n"
+        f"Cada código es único y válido solo una vez.\n\n"
+        f"¡Disfruta tu oferta!\n"
+        f"El equipo de Many Offers — https://manyoffers.shop"
+    )
 
     params = {
         "from": RESEND_FROM_EMAIL,
         "to": [to_email],
         "subject": subject,
+        "html": html_body,
         "text": body_text,
-        "attachments": [
-            {
-                "filename": "cupon_qr.png",
-                "content": qr_b64,
-                "content_type": "image/png"
-            }
-        ]
     }
 
     response = resend.Emails.send(params)
-    print(f"📧 Email enviado a {to_email} — ID: {response.get('id', 'N/A')}")
+    print(f"📧 Email HTML enviado a {to_email} — ID: {response.get('id', 'N/A')}")
 
 
 # =========================

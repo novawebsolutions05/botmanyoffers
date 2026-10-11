@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+  <title>Tu cupón de Many Offers</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=AR+One+Sans:wght@400;600;700&display=swap');
+    body {
+      margin: 0; padding: 0;
+      background-color: #f5f5f5;
+      font-family: 'AR One Sans', Arial, sans-serif;
+      -webkit-text-size-adjust: 100%;
+    }
+    table { border-collapse: collapse; }
+    img { border: 0; display: block; }
+    a { text-decoration: none; }
+  </style>
+</head>
+<body style="margin:0; padding:0; background-color:#f5f5f5;">
+
+<!-- Wrapper -->
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f5f5f5; padding: 30px 0;">
+  <tr>
+    <td align="center">
+
+      <!-- Card -->
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px; width:100%; border-radius:12px; overflow:hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.12);">
+
+        <!-- HEADER -->
+        <tr>
+          <td style="background-color:#221c5b; padding: 32px 40px; text-align:center;">
+            <img src="data:image/png;base64,{{LOGO_B64}}"
+                 alt="Many Offers"
+                 width="180"
+                 style="max-width:180px; margin: 0 auto;" />
+          </td>
+        </tr>
+
+        <!-- BARRA ROJA ACENTO -->
+        <tr>
+          <td style="background-color:#d0473e; height:5px; font-size:0; line-height:0;">&nbsp;</td>
+        </tr>
+
+        <!-- SALUDO -->
+        <tr>
+          <td style="background-color:#ffffff; padding: 36px 40px 20px 40px;">
+            <h1 style="margin:0 0 8px 0; font-size:22px; font-weight:700; color:#111111; line-height:1.3;">
+              🎉 ¡Tu cupón está listo, {{NOMBRE}}!
+            </h1>
+            <p style="margin:0; font-size:15px; color:#676565; line-height:1.7;">
+              Gracias por tu compra en <strong style="color:#221c5b;">Many Offers</strong>. 
+              Aquí tienes tu cupón de descuento. Preséntalo en el establecimiento para canjearlo.
+            </p>
+          </td>
+        </tr>
+
+        <!-- DETALLE DEL CUPÓN -->
+        <tr>
+          <td style="background-color:#ffffff; padding: 0 40px 24px 40px;">
+            <table width="100%" cellpadding="0" cellspacing="0"
+                   style="background-color:#f9f9f9; border:1px solid #ebebeb; border-radius:8px; overflow:hidden;">
+              <tr>
+                <td style="padding: 20px 24px; border-bottom: 1px solid #ebebeb;">
+                  <p style="margin:0 0 4px 0; font-size:11px; font-weight:600; color:#d0473e; text-transform:uppercase; letter-spacing:1px;">Oferta</p>
+                  <p style="margin:0; font-size:16px; font-weight:600; color:#111111; line-height:1.4;">{{PRODUCTO}}</p>
+                </td>
+              </tr>
+              <tr>
+                <td style="padding: 0;">
+                  <table width="100%" cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td width="50%" style="padding: 16px 24px; border-right: 1px solid #ebebeb; vertical-align:top;">
+                        <p style="margin:0 0 4px 0; font-size:11px; font-weight:600; color:#d0473e; text-transform:uppercase; letter-spacing:1px;">Monto</p>
+                        <p style="margin:0; font-size:18px; font-weight:700; color:#14854e;">$&nbsp;{{MONTO}}</p>
+                      </td>
+                      <td width="50%" style="padding: 16px 24px; vertical-align:top;">
+                        <p style="margin:0 0 4px 0; font-size:11px; font-weight:600; color:#d0473e; text-transform:uppercase; letter-spacing:1px;">Fecha de compra</p>
+                        <p style="margin:0; font-size:14px; color:#111111;">{{FECHA}}</p>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- CÓDIGO ÚNICO -->
+        <tr>
+          <td style="background-color:#ffffff; padding: 0 40px 28px 40px; text-align:center;">
+            <p style="margin:0 0 10px 0; font-size:12px; font-weight:600; color:#676565; text-transform:uppercase; letter-spacing:1.5px;">Tu código único</p>
+            <div style="display:inline-block; background-color:#221c5b; border-radius:8px; padding: 14px 32px;">
+              <p style="margin:0; font-size:28px; font-weight:700; color:#ffffff; letter-spacing:6px; font-family: monospace, 'Courier New';">{{CODIGO}}</p>
+            </div>
+            <p style="margin:10px 0 0 0; font-size:12px; color:#676565;">Este código es único y válido solo una vez.</p>
+          </td>
+        </tr>
+
+        <!-- SEPARADOR -->
+        <tr>
+          <td style="background-color:#ffffff; padding: 0 40px;">
+            <hr style="border:none; border-top:1px solid #ebebeb; margin:0;" />
+          </td>
+        </tr>
+
+        <!-- QR -->
+        <tr>
+          <td style="background-color:#ffffff; padding: 28px 40px; text-align:center;">
+            <p style="margin:0 0 16px 0; font-size:14px; font-weight:600; color:#111111;">Escanea el QR en el establecimiento</p>
+            <img src="data:image/png;base64,{{QR_B64}}"
+                 alt="Código QR"
+                 width="180"
+                 style="border:6px solid #221c5b; border-radius:12px; max-width:180px;" />
+            <p style="margin:16px 0 0 0; font-size:13px; color:#676565;">
+              O presenta el código <strong style="color:#221c5b;">{{CODIGO}}</strong> directamente.
+            </p>
+          </td>
+        </tr>
+
+        <!-- CTA BUTTON -->
+        <tr>
+          <td style="background-color:#ffffff; padding: 0 40px 36px 40px; text-align:center;">
+            <a href="https://manyoffers.shop"
+               style="display:inline-block; background-color:#d0473e; color:#ffffff; font-size:14px; font-weight:600;
+                      padding: 14px 36px; border-radius:6px; text-decoration:none; letter-spacing:0.5px;">
+              Ver más ofertas →
+            </a>
+          </td>
+        </tr>
+
+        <!-- BARRA ROJA ACENTO INFERIOR -->
+        <tr>
+          <td style="background-color:#d0473e; height:5px; font-size:0; line-height:0;">&nbsp;</td>
+        </tr>
+
+        <!-- FOOTER -->
+        <tr>
+          <td style="background-color:#221c5b; padding: 24px 40px; text-align:center;">
+            <p style="margin:0 0 8px 0; font-size:13px; color:#faf8f8; line-height:1.6;">
+              ¿Tienes alguna duda? Escríbenos a
+              <a href="mailto:info@manyoffers.shop" style="color:#5ac2fa; text-decoration:none;">info@manyoffers.shop</a>
+            </p>
+            <p style="margin:0; font-size:12px; color:rgba(250,248,248,0.5);">
+              © 2026 Many Offers · Todos los derechos reservados ·
+              <a href="https://manyoffers.shop" style="color:rgba(250,248,248,0.5); text-decoration:none;">manyoffers.shop</a>
+            </p>
+          </td>
+        </tr>
+
+      </table>
+      <!-- /Card -->
+
+    </td>
+  </tr>
+</table>
+<!-- /Wrapper -->
+
+</body>
+</html>
