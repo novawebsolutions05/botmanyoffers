@@ -187,15 +187,13 @@ except Exception as e:
 def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto, fecha, url_qr):
     subject = f"🎉 Tu cupón de Many Offers: {producto}"
 
-    # Codificar QR en base64
-    with open(qr_path, "rb") as f:
-        qr_b64 = base64.b64encode(f.read()).decode()
+    # URL pública del QR generada por qrserver.com (compatible con todos los clientes de email)
+    qr_url_publica = f"https://api.qrserver.com/v1/create-qr-code/?size=200x200&data={url_qr}&color=221c5b&bgcolor=ffffff&margin=10"
 
-    # Codificar logo en base64
-    logo_b64 = LOGO_B64
+    # URL pública del logo en WordPress
+    logo_url = "https://manyoffers.shop/wp-content/uploads/2026/08/Logo-escogido-Many-Offers-v.png"
 
     # Cargar template HTML y reemplazar placeholders
-    # Las imágenes se referencian con cid: para attachments inline
     with open(TEMPLATE_PATH, "r", encoding="utf-8") as f:
         html_body = f.read()
 
@@ -205,8 +203,8 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
         .replace("{{MONTO}}", str(monto))
         .replace("{{FECHA}}", fecha)
         .replace("{{CODIGO}}", codigo_unico)
-        .replace("data:image/png;base64,{{QR_B64}}", "cid:cupon_qr")
-        .replace("data:image/png;base64,{{LOGO_B64}}", "cid:logo_many_offers")
+        .replace("cid:cupon_qr", qr_url_publica)
+        .replace("cid:logo_many_offers", logo_url)
     )
 
     # Texto plano como fallback
@@ -229,22 +227,6 @@ def send_email_with_qr(to_email, nombre, producto, qr_path, codigo_unico, monto,
         "subject": subject,
         "html": html_body,
         "text": body_text,
-        "attachments": [
-            {
-                "filename": "logo.png",
-                "content": logo_b64,
-                "content_type": "image/png",
-                "content_id": "logo_many_offers",
-                "inline": True
-            },
-            {
-                "filename": "cupon_qr.png",
-                "content": qr_b64,
-                "content_type": "image/png",
-                "content_id": "cupon_qr",
-                "inline": True
-            }
-        ]
     }
 
     response = resend.Emails.send(params)
